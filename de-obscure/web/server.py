@@ -143,7 +143,7 @@ _RESULTS = """<!DOCTYPE html>
     }
     .main-link:hover { background: #dff0d0; }
     ul { list-style: none; margin-bottom: 1.6rem; }
-    ul li { margin-bottom: .45rem; }
+    ul li { margin-bottom: .65rem; }
     ul li a {
       color: #4a7c35;
       font-size: .9rem;
@@ -151,6 +151,12 @@ _RESULTS = """<!DOCTYPE html>
       word-break: break-all;
     }
     ul li a:hover { text-decoration: underline; }
+    .privacy-warn {
+      display: block;
+      margin-top: .2rem;
+      font-size: .8rem;
+      color: #b45300;
+    }
     .maps-btn {
       display: inline-block;
       margin-bottom: 1.6rem;
@@ -182,8 +188,13 @@ _RESULTS = """<!DOCTYPE html>
 
     <div class="section-label">Individual observations</div>
     <ul>
-      {% for obs_url in obs_urls %}
-      <li><a href="{{ obs_url }}" target="_blank">{{ obs_url }}</a></li>
+      {% for obs_url, geoprivacy in obs_data %}
+      <li>
+        <a href="{{ obs_url }}" target="_blank">{{ obs_url }}</a>
+        {% if geoprivacy in ("obscured", "private") %}
+        <span class="privacy-warn">&#9888; Location {{ geoprivacy }} — excluded from map</span>
+        {% endif %}
+      </li>
       {% endfor %}
     </ul>
 
@@ -250,9 +261,16 @@ def lookup():
         return render_template_string(_INDEX, error="No nearby observations found.", prefill=url)
 
     inat_url = build_inat_url(nearby)
-    obs_urls = [f"https://www.inaturalist.org/observations/{obs.get_id()}" for obs in nearby]
+    obs_data = [
+        (f"https://www.inaturalist.org/observations/{obs.get_id()}", obs.get_geoprivacy())
+        for obs in nearby
+    ]
 
-    coords = [ll for obs in nearby if (ll := obs.get_lat_lng()) is not None]
+    coords = [
+        ll for obs in nearby
+        if obs.get_geoprivacy() not in ("obscured", "private")
+        and (ll := obs.get_lat_lng()) is not None
+    ]
     maps_url = None
     if coords:
         stops = "/".join(f"{lat},{lng}" for lat, lng in coords)
@@ -275,7 +293,7 @@ def lookup():
     return render_template_string(
         _RESULTS,
         inat_url=inat_url,
-        obs_urls=obs_urls,
+        obs_data=obs_data,
         maps_url=maps_url,
     )
 
