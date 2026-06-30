@@ -9,18 +9,18 @@ import urllib.error
 from inat_observation import InatObservation, fetch_observation, parse_observation_id
 
 
-def _fetch_page(user_login: str, exclude_id: str, date_str: str, before: bool, n: int) -> list[dict]:
+def _fetch_page(user_login: str, anchor_id: str, above: bool, n: int) -> list[dict]:
     params = {
         "user_login": user_login,
-        "not_id": exclude_id,
-        "order_by": "observed_on",
-        "order": "desc" if before else "asc",
+        "not_id": anchor_id,
+        "order_by": "id",
+        "order": "asc" if above else "desc",
         "per_page": n,
     }
-    if before:
-        params["d2"] = date_str
+    if above:
+        params["id_above"] = anchor_id
     else:
-        params["d1"] = date_str
+        params["id_below"] = anchor_id
 
     url = "https://api.inaturalist.org/v1/observations?" + urllib.parse.urlencode(params)
     req = urllib.request.Request(url, headers={"Accept": "application/json"})
@@ -33,12 +33,8 @@ def _fetch_page(user_login: str, exclude_id: str, date_str: str, before: bool, n
         raise ValueError(f"Network error: {e.reason}")
 
 
-def find_nearby_observations(url: str, n: int = 2) -> list[InatObservation]:
-    """Return up to 2*n observations by the same user nearest to the given observation's date.
-
-    Attempts n before and n after; if one side has fewer than n results the
-    other side is not padded (the caller gets whatever the API returns).
-    """
+def find_nearby_observations(url: str, n: int = 5) -> list[InatObservation]:
+    """Return up to 2*n observations by the same user with IDs closest to the anchor."""
     obs_id = parse_observation_id(url)
     data = fetch_observation(obs_id)
     results = data.get("results", [])
@@ -47,15 +43,11 @@ def find_nearby_observations(url: str, n: int = 2) -> list[InatObservation]:
 
     anchor = InatObservation(results[0])
     user_login = anchor.get_user()
-    date_str = anchor.get_date()[:10]  # YYYY-MM-DD
 
-    if date_str == "date":  # get_date() returns "date obscured"
-        raise ValueError("Observation date is obscured; cannot find nearby observations")
+    before = _fetch_page(user_login, obs_id, above=False, n=n)
+    after = _fetch_page(user_login, obs_id, above=True, n=n)
 
-    before = _fetch_page(user_login, obs_id, date_str, before=True, n=n)
-    after = _fetch_page(user_login, obs_id, date_str, before=False, n=n)
-
-    # before comes back newest-first; reverse so the list is chronological
+    # before comes back highest-ID-first; reverse so the list is in ID order
     return [InatObservation(o) for o in reversed(before)] + [InatObservation(o) for o in after]
 
 
