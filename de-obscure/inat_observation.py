@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 import sys
 import re
 import json
@@ -28,6 +30,7 @@ def parse_observation_id(url: str) -> str:
 
 class InatObservation:
     def __init__(self, obs: dict):
+        self._id = obs.get("id")
         self._taxon = obs.get("taxon") or {}
         self._location = obs.get("location")
         self._time_observed_at = obs.get("time_observed_at")
@@ -35,6 +38,15 @@ class InatObservation:
         self._created_at = obs.get("created_at")
         self._geoprivacy = obs.get("geoprivacy")
         self._user = obs.get("user") or {}
+
+    def get_id(self) -> str:
+        return str(self._id) if self._id is not None else "unknown"
+
+    def get_lat_lng(self) -> tuple[float, float] | None:
+        if self._location:
+            lat, lng = self._location.split(",")
+            return float(lat), float(lng)
+        return None
 
     def get_species(self) -> str:
         name = self._taxon.get("name") or "Unknown"
