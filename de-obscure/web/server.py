@@ -23,11 +23,11 @@ _INDEX = """<!DOCTYPE html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>iNat De-obscure</title>
+  <title>iNat d-lookup</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: "Instrument sans", uni-sans-serif; system-ui, -apple-system, sans-serif;
       background: #f5f7f0;
       display: flex;
       align-items: center;
@@ -83,8 +83,8 @@ _INDEX = """<!DOCTYPE html>
 </head>
 <body>
   <div class="card">
-    <h1>iNat De-obscure</h1>
-    <p class="sub">Paste an iNaturalist observation URL to find nearby observations by the same user.</p>
+    <h1>Thank you Rajan's Uncle!</h1>
+    <p class="sub">Paste an iNaturalist observation URL to find nearby observations by the same user (only used for non-nefarious purposes)</p>
     <form method="post" action="/lookup">
       <label for="url">Observation URL</label>
       <input type="text" id="url" name="url" placeholder="https://www.inaturalist.org/observations/…"
@@ -103,11 +103,11 @@ _RESULTS = """<!DOCTYPE html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Results – iNat De-obscure</title>
+  <title>Results – iNat d-lookup</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: "Instrument sans", uni-sans-serif; system-ui, -apple-system, sans-serif;
       background: #f5f7f0;
       padding: 2rem;
     }

@@ -5,6 +5,7 @@ import sys
 import urllib.parse
 import urllib.request
 import urllib.error
+from datetime import datetime, timezone
 
 from inat_observation import InatObservation, fetch_observation, parse_observation_id
 
@@ -43,12 +44,38 @@ def find_nearby_observations(url: str, n: int = 2) -> list[InatObservation]:
 
     anchor = InatObservation(results[0])
     user_login = anchor.get_user()
+    date = anchor.get_date()
+
+    def _date_diff(a: InatObservation, b: InatObservation) -> int:
+        def _parse(obs: InatObservation) -> datetime:
+            raw = obs.get_date()
+            for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d"):
+                try:
+                    dt = datetime.strptime(raw, fmt)
+                    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+                except ValueError:
+                    continue
+            raise ValueError(f"Cannot parse date: {raw!r}")
+        return abs(int((_parse(a) - _parse(b)).total_seconds()))
 
     before = _fetch_page(user_login, obs_id, above=False, n=n)
     after = _fetch_page(user_login, obs_id, above=True, n=n)
 
+
+
     # before comes back highest-ID-first; reverse so the list is in ID order
-    return [InatObservation(o) for o in reversed(before)] + [InatObservation(o) for o in after]
+    id_order_lst =  [InatObservation(o) for o in reversed(before)] + [InatObservation(o) for o in after]
+    
+    for i in range(1, len(id_order_lst)-1):
+        temp = id_order_lst[i]
+        if _date_diff(temp, anchor) < _date_diff(id_order_lst[i-1], anchor):
+            for j in range(i-1, 0, -1):
+                if _date_diff(id_order_lst[j], anchor) > _date_diff(id_order_lst[j+1], anchor) and j > 0:
+                    id_order_lst[j], id_order_lst[j+1] = id_order_lst[j+1], id_order_lst[j]
+                else: 
+                    id_order_lst[j] = temp
+                    break
+            
 
 
 def build_inat_url(nearby: list) -> str:
