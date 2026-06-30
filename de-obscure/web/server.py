@@ -151,7 +151,18 @@ _RESULTS = """<!DOCTYPE html>
       word-break: break-all;
     }
     ul li a:hover { text-decoration: underline; }
-    #map { height: 420px; border-radius: 10px; overflow: hidden; margin-top: .5rem; }
+    .maps-btn {
+      display: inline-block;
+      margin-bottom: 1.6rem;
+      padding: .65rem 1.2rem;
+      background: #4285f4;
+      color: #fff;
+      border-radius: 8px;
+      font-size: .95rem;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .maps-btn:hover { background: #3367d6; }
     .back {
       display: inline-block;
       margin-top: 1.6rem;
@@ -160,29 +171,7 @@ _RESULTS = """<!DOCTYPE html>
       text-decoration: none;
     }
     .back:hover { text-decoration: underline; }
-    .note { font-size: .8rem; color: #999; margin-top: .5rem; }
   </style>
-  {% if api_key %}
-  <script async
-    src="https://maps.googleapis.com/maps/api/js?key={{ api_key }}&loading=async&libraries=marker&callback=initMap">
-  </script>
-  <script>
-    function initMap() {
-      const map = new google.maps.Map(document.getElementById("map"), {
-        zoom: 10,
-        center: { lat: {{ center_lat }}, lng: {{ center_lng }} },
-        mapId: "DEMO_MAP_ID",
-      });
-      {% for lat, lng, obs_id in markers %}
-      new google.maps.marker.AdvancedMarkerElement({
-        map,
-        position: { lat: {{ lat }}, lng: {{ lng }} },
-        title: "Observation {{ obs_id }}",
-      });
-      {% endfor %}
-    }
-  </script>
-  {% endif %}
 </head>
 <body>
   <div class="card">
@@ -198,18 +187,44 @@ _RESULTS = """<!DOCTYPE html>
       {% endfor %}
     </ul>
 
+    {% if maps_url %}
+    <div class="section-label">Google Maps (opened in new tab)</div>
+    <a class="maps-btn" href="{{ maps_url }}" target="_blank">Open in Google Maps</a>
+    {% endif %}
+
+    <!--
+    Alternative: embedded map using Google Maps JS API (set GOOGLE_MAPS_API_KEY env var).
+    Better suited when showing more than ~4 pins.
+
     {% if api_key %}
     <div class="section-label">Map</div>
-    <div id="map"></div>
-    {% else %}
-    <p class="note">Set the <code>GOOGLE_MAPS_API_KEY</code> environment variable to enable the embedded map.</p>
+    <div id="map" style="height:420px;border-radius:10px;overflow:hidden;margin-top:.5rem;"></div>
     {% endif %}
+
+    In <head>, add:
+    {% if api_key %}
+    <script async src="https://maps.googleapis.com/maps/api/js?key={{ api_key }}&loading=async&libraries=marker&callback=initMap"></script>
+    <script>
+      function initMap() {
+        const map = new google.maps.Map(document.getElementById("map"), {
+          zoom: 10, center: { lat: {{ center_lat }}, lng: {{ center_lng }} }, mapId: "DEMO_MAP_ID",
+        });
+        {% for lat, lng, obs_id in markers %}
+        new google.maps.marker.AdvancedMarkerElement({ map, position: { lat: {{ lat }}, lng: {{ lng }} }, title: "Observation {{ obs_id }}" });
+        {% endfor %}
+      }
+    </script>
+    {% endif %}
+    -->
 
     <a class="back" href="/">&larr; Look up another</a>
   </div>
 
   <script>
     window.open("{{ inat_url }}", "_blank");
+    {% if maps_url %}
+    window.open("{{ maps_url }}", "_blank");
+    {% endif %}
   </script>
 </body>
 </html>"""
@@ -237,26 +252,31 @@ def lookup():
     inat_url = build_inat_url(nearby)
     obs_urls = [f"https://www.inaturalist.org/observations/{obs.get_id()}" for obs in nearby]
 
-    api_key = os.environ.get("GOOGLE_MAPS_API_KEY", "")
-    markers = []
-    center_lat, center_lng = 0.0, 0.0
-    if api_key:
-        coords = [(ll, obs.get_id()) for obs in nearby if (ll := obs.get_lat_lng()) is not None]
-        if coords:
-            markers = [(ll[0], ll[1], obs_id) for ll, obs_id in coords]
-            center_lat = sum(m[0] for m in markers) / len(markers)
-            center_lng = sum(m[1] for m in markers) / len(markers)
-        else:
-            api_key = ""  # no coords to show, skip map
+    coords = [ll for obs in nearby if (ll := obs.get_lat_lng()) is not None]
+    maps_url = None
+    if coords:
+        stops = "/".join(f"{lat},{lng}" for lat, lng in coords)
+        maps_url = f"https://www.google.com/maps/dir/{stops}"
+
+    # Alternative: embedded Google Maps (requires GOOGLE_MAPS_API_KEY env var,
+    # better suited when showing more than ~4 pins).
+    # api_key = os.environ.get("GOOGLE_MAPS_API_KEY", "")
+    # markers = []
+    # center_lat, center_lng = 0.0, 0.0
+    # if api_key:
+    #     coord_pairs = [(ll, obs.get_id()) for obs in nearby if (ll := obs.get_lat_lng()) is not None]
+    #     if coord_pairs:
+    #         markers = [(ll[0], ll[1], obs_id) for ll, obs_id in coord_pairs]
+    #         center_lat = sum(m[0] for m in markers) / len(markers)
+    #         center_lng = sum(m[1] for m in markers) / len(markers)
+    #     else:
+    #         api_key = ""
 
     return render_template_string(
         _RESULTS,
         inat_url=inat_url,
         obs_urls=obs_urls,
-        api_key=api_key,
-        markers=markers,
-        center_lat=center_lat,
-        center_lng=center_lng,
+        maps_url=maps_url,
     )
 
 
