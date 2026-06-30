@@ -33,7 +33,7 @@ def _fetch_page(user_login: str, anchor_id: str, above: bool, n: int) -> list[di
         raise ValueError(f"Network error: {e.reason}")
 
 
-def find_nearby_observations(url: str, n: int = 5) -> list[InatObservation]:
+def find_nearby_observations(url: str, n: int = 2) -> list[InatObservation]:
     """Return up to 2*n observations by the same user with IDs closest to the anchor."""
     obs_id = parse_observation_id(url)
     data = fetch_observation(obs_id)
