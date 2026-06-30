@@ -64,17 +64,9 @@ def find_nearby_observations(url: str, n: int = 2) -> list[InatObservation]:
 
 
     # before comes back highest-ID-first; reverse so the list is in ID order
-    id_order_lst =  [InatObservation(o) for o in reversed(before)] + [InatObservation(o) for o in after]
-    
-    for i in range(1, len(id_order_lst)-1):
-        temp = id_order_lst[i]
-        if _date_diff(temp, anchor) < _date_diff(id_order_lst[i-1], anchor):
-            for j in range(i-1, 0, -1):
-                if _date_diff(id_order_lst[j], anchor) > _date_diff(id_order_lst[j+1], anchor) and j > 0:
-                    id_order_lst[j], id_order_lst[j+1] = id_order_lst[j+1], id_order_lst[j]
-                else: 
-                    id_order_lst[j] = temp
-                    break
+    id_order_lst = [InatObservation(o) for o in reversed(before)] + [InatObservation(o) for o in after]
+    id_order_lst.sort(key=lambda obs: _date_diff(obs, anchor))
+    return id_order_lst
             
 
 
