@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RouteNat — species along your route</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🧭</span>
+      <div>
+        <h1>RouteNat</h1>
+        <p class="tagline">Find iNaturalist species you've never seen along a driving route.</p>
+      </div>
+    </div>
+    <form id="scan-form" class="scan-form">
+      <input id="route-url" type="text" placeholder="Google Maps directions URL (…/maps/dir/…)" autocomplete="off" required />
+      <input id="username" type="text" placeholder="iNaturalist username" autocomplete="off" required />
+      <button id="scan-btn" type="submit">Scan route</button>
+    </form>
+  </header>
+
+  <div id="status" class="status" hidden></div>
+
+  <main class="workspace">
+    <section class="map-panel">
+      <div id="map"></div>
+    </section>
+
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <h2>Species</h2>
+        <button id="toggle-all-btn" class="toggle-all" type="button" hidden>Deselect all</button>
+        <span id="reload-hint" class="reload-hint" hidden>Filter changed — reload to apply</span>
+      </div>
+      <div id="species-list" class="species-list">
+        <p class="empty">Run a scan to see species.</p>
+      </div>
+    </aside>
+  </main>
+
+  <section class="route-builder">
+    <h2>Route builder</h2>
+    <ul id="route-list" class="route-list">
+      <li class="empty">Add observations from the map to build a detour route.</li>
+    </ul>
+    <button id="create-route-btn" class="create-route" disabled>Create new route</button>
+    <p id="route-warn" class="route-warn" hidden></p>
+  </section>
+
+  <script src="/app.js"></script>
+  <script async
+    src="https://maps.googleapis.com/maps/api/js?key=__GOOGLE_MAPS_API_KEY__&callback=initMap&loading=async&v=weekly"></script>
+</body>
+</html>
