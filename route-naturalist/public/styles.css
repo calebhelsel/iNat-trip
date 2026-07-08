@@ -99,12 +99,17 @@ body {
   border-bottom: 1px solid var(--line);
 }
 .sidebar-head h2 { font-size: 1rem; color: var(--green); margin-right: auto; }
-.toggle-all {
-  padding: 0.3rem 0.6rem; font-size: 0.75rem; font-weight: 600;
+.filter-btns { display: flex; gap: 0.35rem; }
+.filter-btn {
+  padding: 0.3rem 0.55rem; font-size: 0.75rem; font-weight: 600;
   background: #eef5e8; color: var(--green-dark); border: 1px solid var(--line);
   border-radius: 6px; cursor: pointer;
 }
-.toggle-all:hover { background: #dff0d0; }
+.filter-btn:hover { background: #dff0d0; }
+.filter-btn.plants { border-color: #2f9e2f; color: #256b25; }
+.filter-btn.plants:hover { background: #e2f4df; }
+.filter-btn.verts { border-color: #2f6fd0; color: #1f4f99; }
+.filter-btn.verts:hover { background: #e2ecf9; }
 .reload-hint { flex-basis: 100%; text-align: right; font-size: 0.72rem; color: #b45300; font-weight: 600; margin-top: 0.3rem; }
 
 .species-list { padding: 0.5rem; }

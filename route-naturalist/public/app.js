@@ -81,9 +81,11 @@ async function runScan(routeUrl, username, isAuto) {
     data = payload;
     saveJson(LS_INPUTS, { routeUrl, username });
 
-    // Default any newly seen species to checked; keep existing choices.
+    // Default any newly seen species to DESELECTED — the map starts empty and the
+    // user reveals species via the checkboxes or the Plants/Verts/Select-all
+    // buttons. Existing saved choices are preserved.
     for (const sp of data.species) {
-      if (!(sp.key in checkedState)) checkedState[sp.key] = true;
+      if (!(sp.key in checkedState)) checkedState[sp.key] = false;
     }
     saveJson(LS_CHECKED, checkedState);
 
@@ -92,6 +94,8 @@ async function runScan(routeUrl, username, isAuto) {
       for (const obs of sp.observations) obsById.set(String(obs.id), obs);
     }
 
+    // A fresh/auto scan applies the current selection to the map immediately.
+    appliedChecked = { ...checkedState };
     renderSidebar();
     if (mapReady) renderMap();
 
@@ -102,12 +106,17 @@ async function runScan(routeUrl, username, isAuto) {
       (data.meta ? ` · ${data.meta.requests} iNat requests` : '') +
       (secs && !data.cached ? ` · ${secs}s` : '') +
       (data.cached ? ' · cached' : '');
-    if (data.truncated) {
+    const circlesDone = data.meta ? data.meta.circlesQueried : null;
+    if (data.partial) {
+      summary +=
+        ` — ⚠ stopped early after ${circlesDone}/${data.circleCount} circles ` +
+        `(${data.partialReason || 'iNaturalist limit reached'}); showing partial results.`;
+    } else if (data.budgetHit || data.truncated) {
       summary +=
         ' — ⚠ hit the request budget, results may be incomplete. ' +
         'Try a shorter route or a smaller QUERY_RADIUS_KM.';
     }
-    showStatus(summary, data.truncated ? 'error' : 'info');
+    showStatus(summary, data.partial || data.truncated ? 'error' : 'info');
   } catch (err) {
     showStatus(err.message || 'Scan failed.', 'error');
   } finally {
@@ -119,14 +128,15 @@ async function runScan(routeUrl, username, isAuto) {
 function renderSidebar() {
   const list = el('species-list');
   const toggleBtn = el('toggle-all-btn');
+  const filterBtns = el('filter-btns');
   list.innerHTML = '';
   if (!data || data.species.length === 0) {
     list.innerHTML = '<p class="empty">No unseen species found within 1 mile of this route.</p>';
-    toggleBtn.hidden = true;
+    filterBtns.hidden = true;
     return;
   }
 
-  toggleBtn.hidden = false;
+  filterBtns.hidden = false;
   toggleBtn.textContent = anyChecked() ? 'Deselect all' : 'Select all';
 
   for (const sp of data.species) {
@@ -183,6 +193,16 @@ function toggleAll() {
   applyLiveFilter();
 }
 
+// Show only species of one pin color: 'green' = Plants, 'blue' = Verts. Like the
+// select-all button, this is a live map update over already-loaded markers.
+function selectByColor(color) {
+  if (!data) return;
+  for (const sp of data.species) checkedState[sp.key] = sp.color === color;
+  saveJson(LS_CHECKED, checkedState);
+  renderSidebar();
+  applyLiveFilter();
+}
+
 // Show/hide observation markers to match the current checkbox state, and treat
 // that state as "applied" so a later reload stays consistent.
 function applyLiveFilter() {
@@ -228,14 +248,18 @@ function renderMap() {
   const bounds = new google.maps.LatLngBounds();
   for (const [lat, lng] of data.polyline || []) bounds.extend({ lat, lng });
 
-  // Place a marker per observation, but only for species checked at page load.
+  // Create a marker per observation for EVERY species, but only attach it to the
+  // map if its species is currently selected. Creating them all (hidden) up front
+  // lets the live filters (Select all / Plants / Verts / individual toggles on
+  // reload) reveal species instantly without re-querying. The map starts empty
+  // because species default to deselected.
   for (const sp of data.species) {
-    if (appliedChecked[sp.key] === false) continue;
+    const visible = appliedChecked[sp.key] !== false;
     for (const obs of sp.observations) {
       const position = { lat: obs.lat, lng: obs.lng };
       const marker = new google.maps.Marker({
         position,
-        map,
+        map: visible ? map : null,
         icon: {
           path: google.maps.SymbolPath.CIRCLE,
           scale: 6,
@@ -248,7 +272,7 @@ function renderMap() {
       });
       marker.addListener('click', () => openCard(obs, marker));
       markers.push({ marker, obs, speciesKey: sp.key });
-      bounds.extend(position);
+      if (visible) bounds.extend(position);
     }
   }
 
@@ -392,6 +416,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   el('create-route-btn').addEventListener('click', createNewRoute);
   el('toggle-all-btn').addEventListener('click', toggleAll);
+  el('plants-btn').addEventListener('click', () => selectByColor('green'));
+  el('verts-btn').addEventListener('click', () => selectByColor('blue'));
 
   // Auto-run the saved scan on reload so persisted checkbox filters apply.
   if (saved && saved.routeUrl && saved.username) {

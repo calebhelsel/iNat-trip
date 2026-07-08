@@ -46,6 +46,13 @@ same route. It is the default (`filterStrategy: 'server'`).
   iNat's 10k offset cap.
 - **Per-scan request budget** (`MAX_REQUESTS_PER_SCAN`, default 400) — a scan now
   fails fast with partial results + a warning instead of hanging for minutes.
+- **Partial results on iNat failure** — if a circle query still errors after all
+  retries (e.g. a sustained HTTP 429), every worker stops and the scan returns the
+  observations collected so far (`partial: true`, `partialReason`), rather than
+  discarding the whole scan. This also stops us from hammering iNat past its limits.
+- **Public records only** (`geoprivacy=open&taxon_geoprivacy=open`) — obscured/
+  private coordinates are excluded (they're randomized ~0.2°, so mapping them is
+  misleading); as a side effect it trims a few percent of the pull.
 - **Per-circle page cap** (50) — one dense circle can't run away.
 - **Username validation** — unknown users fail immediately with a clear message.
 - **Instrumentation** — every scan returns `meta` with request counts, per-phase

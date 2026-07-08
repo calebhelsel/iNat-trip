@@ -155,31 +155,44 @@ async function scanPolyline({ polyline, waypoints = [], username, directionsMs =
   let requestsSpent = 0;
   let circlesQueried = 0;
   let nextIdx = 0;
+  // If iNat throws (e.g. HTTP 429 after all retries), stop every worker and keep
+  // whatever we've collected so far — the scan returns partial results instead of
+  // failing outright and won't keep hammering iNat past its limits.
+  let aborted = false;
+  let abortReason = null;
 
   async function worker() {
     while (true) {
+      if (aborted) return;
       if (requestsSpent >= maxRequests) return; // budget exhausted
       const i = nextIdx++;
       if (i >= centers.length) return;
       const c = centers[i];
-      const { results, requests } = await fetchObservationsInCircle(
+      const { results, requests, error } = await fetchObservationsInCircle(
         c.lat,
         c.lng,
         queryRadiusKm,
         circleOpts
       );
       requestsSpent += requests;
-      circlesQueried += 1;
+      // Merge whatever pages came back before the error (if any).
       for (const obs of results) {
         if (!rawById.has(obs.id)) rawById.set(obs.id, obs);
       }
+      if (error) {
+        aborted = true;
+        abortReason = error.message;
+        return;
+      }
+      circlesQueried += 1;
     }
   }
 
   await Promise.all(
     Array.from({ length: Math.min(concurrency, centers.length) }, () => worker())
   );
-  const truncated = circlesQueried < centers.length;
+  const budgetHit = !aborted && requestsSpent >= maxRequests && circlesQueried < centers.length;
+  const truncated = aborted || circlesQueried < centers.length;
   const tCircles = Date.now();
 
   // Normalize + keep only observations truly inside the 1-mile buffer.
@@ -212,6 +225,11 @@ async function scanPolyline({ polyline, waypoints = [], username, directionsMs =
     speciesCount: species.length,
     species,
     truncated,
+    // partial == stopped early because iNat errored (e.g. 429), not because we
+    // hit the request budget. budgetHit == stopped because of MAX_REQUESTS.
+    partial: aborted,
+    partialReason: abortReason,
+    budgetHit,
     cached: false,
     meta: {
       filterStrategy,

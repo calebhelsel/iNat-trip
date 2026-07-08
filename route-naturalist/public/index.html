@@ -32,7 +32,11 @@
     <aside class="sidebar">
       <div class="sidebar-head">
         <h2>Species</h2>
-        <button id="toggle-all-btn" class="toggle-all" type="button" hidden>Deselect all</button>
+        <div id="filter-btns" class="filter-btns" hidden>
+          <button id="toggle-all-btn" class="filter-btn" type="button">Select all</button>
+          <button id="plants-btn" class="filter-btn plants" type="button" title="Show only plants (green pins)">Plants</button>
+          <button id="verts-btn" class="filter-btn verts" type="button" title="Show only vertebrates (blue pins)">Verts</button>
+        </div>
         <span id="reload-hint" class="reload-hint" hidden>Filter changed — reload to apply</span>
       </div>
       <div id="species-list" class="species-list">

@@ -116,11 +116,19 @@ async function userExists(username) {
 //   has never observed. This is the single biggest request-count reducer for
 //   power users, because most common species drop out before pagination.
 //
-// Returns { results, requests } so callers can enforce a per-scan budget.
+// Only PUBLIC observations are returned: geoprivacy=open and taxon_geoprivacy=open
+// exclude records whose coordinates are obscured (user-obscured or auto-obscured
+// for threatened taxa). Obscured points are randomized ~0.2° anyway, so mapping
+// them would be misleading.
+//
+// Returns { results, requests, error }. On a network/HTTP failure that survives
+// all retries, `error` is set and whatever pages were already fetched are still
+// returned — so a scan can surface partial results instead of failing outright.
 async function fetchObservationsInCircle(lat, lng, radiusKm, opts = {}) {
   const results = [];
   let idAbove = 0;
   let requests = 0;
+  let error = null;
 
   while (requests < MAX_PAGES_PER_CIRCLE) {
     const params = {
@@ -135,19 +143,30 @@ async function fetchObservationsInCircle(lat, lng, radiusKm, opts = {}) {
       // Only species-level records — drops genus/coarser identifications.
       hrank: 'species',
       lrank: 'species',
+      // Public, precise-location records only (no obscured coordinates).
+      geoprivacy: 'open',
+      taxon_geoprivacy: 'open',
     };
     if (opts.unobservedByUserId) {
       params.unobserved_by_user_id = opts.unobservedByUserId;
     }
 
-    const data = await inatGet('/observations', params);
+    let data;
+    try {
+      data = await inatGet('/observations', params);
+    } catch (err) {
+      // Bubble the failure up as data, not an exception, so the caller keeps the
+      // pages we already have (e.g. a 429 on a long/dense route).
+      error = err;
+      break;
+    }
     requests += 1;
     const batch = data.results || [];
     results.push(...batch);
     if (batch.length < PER_PAGE) break;
     idAbove = batch[batch.length - 1].id;
   }
-  return { results, requests };
+  return { results, requests, error };
 }
 
 // Fetch the set of taxon ids the user has ever observed, via species_counts

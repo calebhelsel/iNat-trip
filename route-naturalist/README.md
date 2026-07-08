@@ -12,8 +12,12 @@ buffer/dedup/filter logic; a static single page displays results on a Google Map
    buffer to cut request count) are spaced along the polyline so consecutive circles fully
    cover the 1-mile band.
 3. **Query iNaturalist** for each circle (`per_page=200`, paginated), deduping by
-   observation id. All calls go through one **global rate limiter** (≥1s spacing, 429
-   backoff) with a descriptive `User-Agent`.
+   observation id. Only **public, precise-location** records are fetched
+   (`geoprivacy=open&taxon_geoprivacy=open`) — obscured coordinates are randomized
+   and would map inaccurately. All calls go through one **global rate limiter**
+   (≥1s spacing, 429 backoff) with a descriptive `User-Agent`. If iNaturalist errors
+   out mid-scan (e.g. a sustained 429 on a huge/dense route), the scan **stops and
+   returns the observations gathered so far** rather than failing outright.
 4. **Filter geometrically** to observations truly within 1 mile of the route, then **filter
    to unseen species** using a single `species_counts` fetch for the user (local set filter).
 5. **Group by species**, sorted by descending count in the buffer.
@@ -47,9 +51,11 @@ Paste a Google Maps directions URL and an iNaturalist username, then **Scan rout
 - **Map** (hybrid): a pin per observation — plants green, vertebrates blue, everything else
   red. Click a pin for a card with photo, species, date, a "Research Grade" badge, and
   **Add to route**.
-- **Sidebar**: one row per species (photo, linked name, count) with a checkbox (checked by
-  default). Checkbox state is remembered, but **filtering only applies on page reload** — the
-  saved scan re-runs automatically from cache on reload.
+- **Sidebar**: one row per species (photo, linked name, count) with a checkbox. Species
+  start **deselected** (the map opens empty); reveal them with the checkboxes or the
+  header buttons: **Select all / Deselect all**, **Plants** (green pins only), and **Verts**
+  (blue pins only). Those buttons update the map live; individual checkbox changes are
+  remembered but **apply on page reload** (the saved scan re-runs from cache).
 - **Route builder**: added observations, in selection order, each removable. **Create new
   route** opens a Google Maps directions URL with your original stops plus the added
   observations. Google Maps caps `dir/` URLs around ~10 stops; the app warns past that.
