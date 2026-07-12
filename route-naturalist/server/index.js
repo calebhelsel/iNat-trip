@@ -6,8 +6,11 @@ const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const { scanRoute } = require('./pipeline');
+const { createRateLimiter } = require('./ratelimit');
 
 const app = express();
+// Behind Render's proxy, trust one hop so req.ip is the real client (for limiting).
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '256kb' }));
 
 const PORT = Number(process.env.PORT) || 5050;
@@ -17,6 +20,9 @@ const CACHE_TTL_MS = (Number(process.env.CACHE_TTL_MINUTES) || 180) * 60 * 1000;
 const FILTER_STRATEGY = process.env.FILTER_STRATEGY || 'server';
 const MAX_REQUESTS_PER_SCAN = Number(process.env.MAX_REQUESTS_PER_SCAN) || 400;
 const INAT_CONCURRENCY = Number(process.env.INAT_CONCURRENCY) || 4;
+// Per-IP scan rate limit — protects the Google/iNat quotas on a public URL.
+const SCAN_RATE_MAX = Number(process.env.SCAN_RATE_MAX) || 20;
+const SCAN_RATE_WINDOW_MIN = Number(process.env.SCAN_RATE_WINDOW_MIN) || 10;
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 
@@ -33,7 +39,12 @@ app.get('/index.html', serveIndex);
 // Static assets (app.js, styles.css) — index.html is handled above.
 app.use(express.static(PUBLIC_DIR, { index: false }));
 
-app.post('/api/scan', async (req, res) => {
+const scanLimiter = createRateLimiter({
+  windowMs: SCAN_RATE_WINDOW_MIN * 60 * 1000,
+  max: SCAN_RATE_MAX,
+});
+
+app.post('/api/scan', scanLimiter, async (req, res) => {
   const routeUrl = (req.body && req.body.routeUrl ? String(req.body.routeUrl) : '').trim();
   const username = (req.body && req.body.username ? String(req.body.username) : '').trim();
 

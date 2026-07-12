@@ -1,0 +1,35 @@
+# Render Blueprint for RouteNat. In the Render dashboard: New > Blueprint, point it
+# at this repo, then fill in the two secret env vars below (they are NOT stored in
+# git). Render injects PORT automatically; server/index.js already reads it.
+services:
+  - type: web
+    name: routenat
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      # --- secrets: set these in the Render dashboard, never commit them ---
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
+      - key: INAT_CONTACT
+        sync: false
+      # --- runtime tuning (safe to keep in git) ---
+      - key: NODE_VERSION
+        value: "22"
+      - key: QUERY_RADIUS_KM
+        value: "5"
+      - key: FILTER_STRATEGY
+        value: server
+      - key: INAT_CONCURRENCY
+        value: "4"
+      - key: MAX_REQUESTS_PER_SCAN
+        value: "400"
+      - key: CACHE_TTL_MINUTES
+        value: "180"
+      # per-IP scan limit on the public endpoint
+      - key: SCAN_RATE_MAX
+        value: "20"
+      - key: SCAN_RATE_WINDOW_MIN
+        value: "10"

@@ -46,12 +46,18 @@ function normalizeObservation(obs, polyline) {
   const taxon = obs.taxon || {};
   const commonName = taxon.preferred_common_name || null;
   const scientificName = taxon.name || 'Unknown species';
+  // Global count of this taxon's observations across all of iNaturalist — used to
+  // sort the sidebar so the globally rarest species surface first.
+  const globalObsCount = Number.isFinite(taxon.observations_count)
+    ? taxon.observations_count
+    : null;
 
   return {
     id: obs.id,
     lat,
     lng,
     taxonId: taxon.id || null,
+    globalObsCount,
     iconicTaxon: taxon.iconic_taxon_name || null,
     color: colorForIconicTaxon(taxon.iconic_taxon_name),
     commonName,
@@ -66,7 +72,9 @@ function normalizeObservation(obs, polyline) {
   };
 }
 
-// Group surviving observations by species and sort species by descending count.
+// Group surviving observations by species, then sort so the globally RAREST
+// species (fewest total observations on iNaturalist) appear first. Species with
+// an unknown global count sort to the bottom; ties break by local count desc.
 function groupBySpecies(observations) {
   const groups = new Map();
   for (const obs of observations) {
@@ -81,6 +89,7 @@ function groupBySpecies(observations) {
         iconicTaxon: obs.iconicTaxon,
         color: obs.color,
         photoUrl: obs.photoUrl,
+        globalObsCount: obs.globalObsCount,
         taxonUrl: obs.taxonId
           ? `https://www.inaturalist.org/taxa/${obs.taxonId}`
           : null,
@@ -91,9 +100,21 @@ function groupBySpecies(observations) {
     const g = groups.get(key);
     g.count += 1;
     if (!g.photoUrl && obs.photoUrl) g.photoUrl = obs.photoUrl;
+    if (g.globalObsCount == null && obs.globalObsCount != null) {
+      g.globalObsCount = obs.globalObsCount;
+    }
     g.observations.push(obs);
   }
-  return [...groups.values()].sort((a, b) => b.count - a.count);
+  return [...groups.values()].sort(compareByGlobalRarity);
+}
+
+// Ascending global observation count (rarest first). Unknown counts (null) sort
+// last; equal counts fall back to more local observations first.
+function compareByGlobalRarity(a, b) {
+  const ca = a.globalObsCount == null ? Infinity : a.globalObsCount;
+  const cb = b.globalObsCount == null ? Infinity : b.globalObsCount;
+  if (ca !== cb) return ca - cb;
+  return b.count - a.count;
 }
 
 // Run the full pipeline: route -> circles -> observations -> filter -> group.
@@ -252,4 +273,11 @@ async function scanPolyline({ polyline, waypoints = [], username, directionsMs =
   return result;
 }
 
-module.exports = { scanRoute, scanPolyline };
+module.exports = {
+  scanRoute,
+  scanPolyline,
+  // Exported for unit tests.
+  groupBySpecies,
+  normalizeObservation,
+  colorForIconicTaxon,
+};

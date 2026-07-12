@@ -5,7 +5,13 @@
 // keeps the whole app under iNat's limits (~60/min target, 100/min ceiling).
 
 const API_BASE = 'https://api.inaturalist.org/v1';
-const MIN_INTERVAL_MS = 1000; // >= 1s between calls -> <= 60/min
+// >= 1s between call starts -> <= 60/min. Overridable so tests can disable the
+// real 1s spacing (set INAT_MIN_INTERVAL_MS=0).
+const MIN_INTERVAL_MS = Number.isFinite(Number(process.env.INAT_MIN_INTERVAL_MS))
+  ? Number(process.env.INAT_MIN_INTERVAL_MS)
+  : 1000;
+// Base for exponential retry backoff. Overridable so tests don't sleep seconds.
+const BACKOFF_BASE_MS = Number(process.env.INAT_BACKOFF_BASE_MS) || 1000;
 const MAX_RETRIES = 4;
 const PER_PAGE = 200; // API cap
 const MAX_PAGES_PER_CIRCLE = 50; // hard stop so one dense circle can't run away
@@ -68,7 +74,7 @@ async function inatGet(path, params) {
       if (attempt === MAX_RETRIES) {
         throw new Error(`iNaturalist request failed after ${MAX_RETRIES} retries: ${err.message}`);
       }
-      const backoff = Math.min(30000, 1000 * 2 ** attempt);
+      const backoff = Math.min(30000, BACKOFF_BASE_MS * 2 ** attempt);
       metrics.retries += 1;
       metrics.retryWaitMs += backoff;
       await sleep(backoff);
@@ -86,7 +92,7 @@ async function inatGet(path, params) {
       const retryAfter = Number(resp.headers.get('retry-after'));
       const backoff = Number.isFinite(retryAfter) && retryAfter > 0
         ? retryAfter * 1000
-        : Math.min(30000, 1000 * 2 ** attempt);
+        : Math.min(30000, BACKOFF_BASE_MS * 2 ** attempt);
       metrics.retries += 1;
       metrics.retryWaitMs += backoff;
       await sleep(backoff);

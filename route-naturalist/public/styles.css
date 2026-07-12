@@ -110,7 +110,9 @@ body {
 .filter-btn.plants:hover { background: #e2f4df; }
 .filter-btn.verts { border-color: #2f6fd0; color: #1f4f99; }
 .filter-btn.verts:hover { background: #e2ecf9; }
-.reload-hint { flex-basis: 100%; text-align: right; font-size: 0.72rem; color: #b45300; font-weight: 600; margin-top: 0.3rem; }
+.filter-btn.plants.active { background: #2f9e2f; color: #fff; border-color: #2f9e2f; }
+.filter-btn.verts.active { background: #2f6fd0; color: #fff; border-color: #2f6fd0; }
+.rarity { color: #7a5c00; font-weight: 600; }
 
 .species-list { padding: 0.5rem; }
 .species-list .empty, .route-list .empty {

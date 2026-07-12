@@ -51,11 +51,15 @@ Paste a Google Maps directions URL and an iNaturalist username, then **Scan rout
 - **Map** (hybrid): a pin per observation — plants green, vertebrates blue, everything else
   red. Click a pin for a card with photo, species, date, a "Research Grade" badge, and
   **Add to route**.
-- **Sidebar**: one row per species (photo, linked name, count) with a checkbox. Species
-  start **deselected** (the map opens empty); reveal them with the checkboxes or the
-  header buttons: **Select all / Deselect all**, **Plants** (green pins only), and **Verts**
-  (blue pins only). Those buttons update the map live; individual checkbox changes are
-  remembered but **apply on page reload** (the saved scan re-runs from cache).
+- **Sidebar**: one row per species (photo, linked name, local count, and the species'
+  **total observation count on iNaturalist**). Species are sorted so the globally
+  **rarest** (fewest total iNat observations) appear first. Species start
+  **deselected** (the map opens empty); reveal them with the checkboxes or the header
+  buttons — **Select all / Deselect all**, **Plants** (filters the sidebar to green/plant
+  species and shows only their pins), and **Verts** (blue/vertebrate species). Click an
+  active **Plants**/**Verts** button again to clear the filter. Every control updates the
+  map **live** — no page reload. Selections persist across reloads (the saved scan
+  re-runs from cache).
 - **Route builder**: added observations, in selection order, each removable. **Create new
   route** opens a Google Maps directions URL with your original stops plus the added
   observations. Google Maps caps `dir/` URLs around ~10 stops; the app warns past that.
@@ -71,3 +75,40 @@ errors, and enforces a **per-scan request budget** (returning partial results wi
 warning rather than hanging). In dense areas, *smaller* `QUERY_RADIUS_KM` usually
 helps (less over-pull past the 1-mile buffer). Full analysis, the benchmark harness,
 and tuning guidance are in **[PERFORMANCE.md](PERFORMANCE.md)**.
+
+## Testing
+
+```bash
+npm test
+```
+
+Uses Node's built-in test runner (no extra dependencies), so adding a case is just
+another `test('...', () => { ... })`. The suite lives in `test/`:
+
+- `test/geometry.test.js` — buffer math and circle placement.
+- `test/filters.test.js` — the sidebar/map filter rules (including that **Plants**
+  shows only green species and **Verts** only blue).
+- `test/pipeline.test.js` — the full scan over a **mocked** iNaturalist
+  (`test/helpers/inat-mock.js`): grouping, rarest-first sort, buffer/color filtering,
+  public-only query params, and the long-route resilience paths — a **mid-scan 429
+  returns partial results** and a **transient network error is retried** (the two
+  causes of "failed to fetch").
+- `test/ratelimit.test.js` — the per-IP scan limiter.
+
+The mock fakes `global.fetch`, so tests are offline and deterministic; they set
+`INAT_MIN_INTERVAL_MS=0` / `INAT_BACKOFF_BASE_MS=1` so the limiter/backoff don't
+sleep.
+
+## Deploy (Render)
+
+A [`render.yaml`](render.yaml) blueprint is included. In Render: **New → Blueprint**,
+point it at this repo, then set the two secrets (`GOOGLE_MAPS_API_KEY`,
+`INAT_CONTACT`) in the dashboard — they are marked `sync: false` so they are never
+committed. Render injects `PORT` automatically and terminates TLS. `buildCommand` is
+`npm install`, `startCommand` is `npm start`.
+
+**Before sharing the public URL, read [SECURITY.md](SECURITY.md).** The most
+important step: the Maps JS key is public in the browser, so **restrict it by HTTP
+referrer** to your Render domain, limit it to the Maps JavaScript + Directions APIs,
+and set a Google Cloud **budget alert**. The public `/api/scan` endpoint is protected
+by a per-IP rate limit (`SCAN_RATE_MAX` / `SCAN_RATE_WINDOW_MIN`).

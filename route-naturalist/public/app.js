@@ -1,5 +1,8 @@
 'use strict';
 
+// Pure filter helpers, shared with the Node test suite (see public/filters.js).
+const Filters = window.RouteNatFilters;
+
 // ---- Persistence keys ----
 const LS_INPUTS = 'routenat.inputs';
 const LS_CHECKED = 'routenat.checked';
@@ -14,8 +17,8 @@ let routePolyline = null;
 
 let data = null; // latest scan result
 let obsById = new Map(); // id -> observation (for "Add to route")
-let checkedState = loadJson(LS_CHECKED, {}); // speciesKey -> bool (live, editable)
-let appliedChecked = { ...checkedState }; // snapshot used for the map this page load
+let checkedState = loadJson(LS_CHECKED, {}); // speciesKey -> bool (live source of truth)
+let viewFilter = null; // null | 'green' | 'blue' — Plants/Verts sidebar filter
 let routeItems = loadJson(LS_ROUTE, []); // ordered added observations
 
 // ---- Utilities ----
@@ -94,8 +97,6 @@ async function runScan(routeUrl, username, isAuto) {
       for (const obs of sp.observations) obsById.set(String(obs.id), obs);
     }
 
-    // A fresh/auto scan applies the current selection to the map immediately.
-    appliedChecked = { ...checkedState };
     renderSidebar();
     if (mapReady) renderMap();
 
@@ -127,7 +128,6 @@ async function runScan(routeUrl, username, isAuto) {
 // ---- Sidebar ----
 function renderSidebar() {
   const list = el('species-list');
-  const toggleBtn = el('toggle-all-btn');
   const filterBtns = el('filter-btns');
   list.innerHTML = '';
   if (!data || data.species.length === 0) {
@@ -137,16 +137,28 @@ function renderSidebar() {
   }
 
   filterBtns.hidden = false;
-  toggleBtn.textContent = anyChecked() ? 'Deselect all' : 'Select all';
+  updateFilterButtons();
 
-  for (const sp of data.species) {
+  // The color buttons narrow which species rows are shown (Plants/Verts). The
+  // species are already sorted globally-rarest-first by the server.
+  const rows = Filters.visibleSpecies(data.species, viewFilter);
+  if (rows.length === 0) {
+    list.innerHTML = '<p class="empty">No species of this group in range.</p>';
+    return;
+  }
+
+  for (const sp of rows) {
     const row = document.createElement('div');
     row.className = 'species-row';
 
-    const checked = checkedState[sp.key] !== false;
+    const checked = Filters.isSpeciesVisible(checkedState, sp.key);
     const thumb = sp.photoUrl
       ? `<img class="thumb" src="${escapeHtml(sp.photoUrl)}" alt="" />`
       : `<span class="thumb placeholder"></span>`;
+    const rarity =
+      sp.globalObsCount != null
+        ? `${sp.globalObsCount.toLocaleString()} on iNat`
+        : 'count unknown';
 
     row.innerHTML = `
       <input type="checkbox" ${checked ? 'checked' : ''} data-key="${escapeHtml(sp.key)}" />
@@ -157,7 +169,7 @@ function renderSidebar() {
         </a>
         <div class="species-count">
           <span class="swatch" style="background:${swatchColor(sp.color)}"></span>
-          ${sp.count} observation${sp.count === 1 ? '' : 's'}
+          ${sp.count} here · <span class="rarity">${escapeHtml(rarity)}</span>
         </div>
       </div>`;
 
@@ -167,51 +179,69 @@ function renderSidebar() {
   }
 }
 
+// Individual checkbox toggle — now applies to the map LIVE (no page reload).
 function onToggleSpecies(key, isChecked) {
-  // Persist immediately, but DO NOT touch the map — individual toggles apply on
-  // reload (per the brief). The "Deselect all" button is the live exception.
   checkedState[key] = isChecked;
   saveJson(LS_CHECKED, checkedState);
-  if (isChecked !== (appliedChecked[key] !== false)) {
-    el('reload-hint').hidden = false;
-  }
-  el('toggle-all-btn').textContent = anyChecked() ? 'Deselect all' : 'Select all';
+  setSpeciesVisibility(key, isChecked);
+  updateFilterButtons();
 }
 
 function anyChecked() {
-  return !!(data && data.species.some((sp) => checkedState[sp.key] !== false));
+  return !!(data && Filters.anyChecked(data.species, checkedState));
 }
 
-// Select/Deselect all — this one updates the map immediately (only toggles the
-// visibility of already-loaded markers, so it costs no queries).
+// Reflect current state onto the header buttons: the Select/Deselect-all label
+// and which color filter (if any) is active.
+function updateFilterButtons() {
+  el('toggle-all-btn').textContent = anyChecked() ? 'Deselect all' : 'Select all';
+  for (const [id, color] of [['plants-btn', 'green'], ['verts-btn', 'blue']]) {
+    const btn = el(id);
+    const active = viewFilter === color;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+}
+
+// Select all / Deselect all — live map update over already-loaded markers.
 function toggleAll() {
   if (!data) return;
   const turnOn = !anyChecked();
-  for (const sp of data.species) checkedState[sp.key] = turnOn;
+  checkedState = Filters.selectionForAll(data.species, turnOn, checkedState);
   saveJson(LS_CHECKED, checkedState);
   renderSidebar();
   applyLiveFilter();
 }
 
-// Show only species of one pin color: 'green' = Plants, 'blue' = Verts. Like the
-// select-all button, this is a live map update over already-loaded markers.
-function selectByColor(color) {
+// Plants ('green') / Verts ('blue'): filter the sidebar to that group AND select
+// only that group on the map. Clicking the active button again clears the filter,
+// returning the sidebar to all species. Live — no reload.
+function toggleColorFilter(color) {
   if (!data) return;
-  for (const sp of data.species) checkedState[sp.key] = sp.color === color;
-  saveJson(LS_CHECKED, checkedState);
+  if (viewFilter === color) {
+    viewFilter = null; // reverse: show every species again
+  } else {
+    viewFilter = color;
+    checkedState = Filters.selectionForColor(data.species, color, checkedState);
+    saveJson(LS_CHECKED, checkedState);
+  }
   renderSidebar();
   applyLiveFilter();
 }
 
-// Show/hide observation markers to match the current checkbox state, and treat
-// that state as "applied" so a later reload stays consistent.
-function applyLiveFilter() {
-  appliedChecked = { ...checkedState };
+// Show/hide one species' markers immediately.
+function setSpeciesVisibility(key, visible) {
   for (const m of markers) {
-    const visible = checkedState[m.speciesKey] !== false;
+    if (m.speciesKey === key) m.marker.setMap(visible ? map : null);
+  }
+}
+
+// Sync every marker's visibility to the current checkbox state.
+function applyLiveFilter() {
+  for (const m of markers) {
+    const visible = Filters.isSpeciesVisible(checkedState, m.speciesKey);
     m.marker.setMap(visible ? map : null);
   }
-  el('reload-hint').hidden = true;
 }
 
 function swatchColor(color) {
@@ -250,11 +280,11 @@ function renderMap() {
 
   // Create a marker per observation for EVERY species, but only attach it to the
   // map if its species is currently selected. Creating them all (hidden) up front
-  // lets the live filters (Select all / Plants / Verts / individual toggles on
-  // reload) reveal species instantly without re-querying. The map starts empty
-  // because species default to deselected.
+  // lets the live filters (Select all / Plants / Verts / individual checkboxes)
+  // reveal species instantly without re-querying. The map starts empty because
+  // species default to deselected.
   for (const sp of data.species) {
-    const visible = appliedChecked[sp.key] !== false;
+    const visible = Filters.isSpeciesVisible(checkedState, sp.key);
     for (const obs of sp.observations) {
       const position = { lat: obs.lat, lng: obs.lng };
       const marker = new google.maps.Marker({
@@ -410,14 +440,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const routeUrl = el('route-url').value.trim();
     const username = el('username').value.trim();
     if (!routeUrl || !username) return;
-    el('reload-hint').hidden = true;
     runScan(routeUrl, username, false);
   });
 
   el('create-route-btn').addEventListener('click', createNewRoute);
   el('toggle-all-btn').addEventListener('click', toggleAll);
-  el('plants-btn').addEventListener('click', () => selectByColor('green'));
-  el('verts-btn').addEventListener('click', () => selectByColor('blue'));
+  el('plants-btn').addEventListener('click', () => toggleColorFilter('green'));
+  el('verts-btn').addEventListener('click', () => toggleColorFilter('blue'));
 
   // Auto-run the saved scan on reload so persisted checkbox filters apply.
   if (saved && saved.routeUrl && saved.username) {
