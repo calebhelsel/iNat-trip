@@ -78,7 +78,20 @@ async function runScan(routeUrl, username, isAuto) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ routeUrl, username }),
     });
-    const payload = await resp.json();
+    // Parse defensively: a very long scan can have its connection cut by a proxy
+    // or a restarting instance, leaving an empty/non-JSON body. Give a clear
+    // message instead of "Unexpected end of JSON input".
+    const raw = await resp.text();
+    let payload;
+    try {
+      payload = raw ? JSON.parse(raw) : {};
+    } catch {
+      throw new Error(
+        resp.ok
+          ? 'The server returned an incomplete response — the route is likely too long/dense and the scan timed out. Try a shorter route or a smaller area.'
+          : `Request failed (${resp.status}).`
+      );
+    }
     if (!resp.ok) throw new Error(payload.error || `Request failed (${resp.status})`);
 
     data = payload;
@@ -112,6 +125,10 @@ async function runScan(routeUrl, username, isAuto) {
       summary +=
         ` — ⚠ stopped early after ${circlesDone}/${data.circleCount} circles ` +
         `(${data.partialReason || 'iNaturalist limit reached'}); showing partial results.`;
+    } else if (data.timedOut) {
+      summary +=
+        ` — ⚠ hit the time limit after ${circlesDone}/${data.circleCount} circles; ` +
+        'showing partial results. Try a shorter route or a smaller area.';
     } else if (data.budgetHit || data.truncated) {
       summary +=
         ' — ⚠ hit the request budget, results may be incomplete. ' +

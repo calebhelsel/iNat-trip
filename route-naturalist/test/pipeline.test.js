@@ -155,6 +155,23 @@ test('a transient network error is retried, not surfaced as a failure', async ()
   assert.equal(res.speciesCount, 1);
 });
 
+test('a scan that exceeds the time budget returns partial results', async () => {
+  const observations = [makeObservation(1, ...ON_ROUTE, { name: 'Before Deadline' })];
+  // Each circle query takes ~15 ms; a 20 ms budget stops it after a circle or two.
+  const { fakeFetch } = makeInatFetch({ observations, latencyMs: 15 });
+  global.fetch = fakeFetch;
+
+  const res = await scanPolyline(
+    { polyline: ROUTE, username: 'tester' },
+    opts({ timeBudgetMs: 20 }),
+  );
+
+  assert.equal(res.timedOut, true, 'should flag the time budget');
+  assert.equal(res.truncated, true);
+  assert.ok(res.meta.circlesQueried < res.circleCount, 'did not finish every circle');
+  assert.equal(res.speciesCount, 1, 'still surfaces what it gathered');
+});
+
 test('a long route places many circles and completes', async () => {
   const longRoute = straightPolyline(42.0, -76.0, 160, 40); // ~160 km
   const observations = [makeObservation(1, ...ON_ROUTE, { name: 'Anywhere' })];

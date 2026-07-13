@@ -51,10 +51,12 @@ function makeInatFetch(options = {}) {
     speciesCounts = [],
     failObservationsAfter = Infinity,
     throwOnceForObservations = false,
+    latencyMs = 0, // artificial per-observations-request delay (for time-budget tests)
   } = options;
 
   const calls = { users: 0, observations: 0, speciesCounts: 0, urls: [] };
   let threwOnce = false;
+  const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
   async function fakeFetch(url) {
     calls.urls.push(url);
@@ -74,6 +76,7 @@ function makeInatFetch(options = {}) {
         threwOnce = true;
         throw new TypeError('fetch failed'); // simulate a transient network drop
       }
+      if (latencyMs) await delay(latencyMs);
       calls.observations += 1;
       if (calls.observations > failObservationsAfter) {
         return jsonResponse({}, { status: 429, retryAfter: 0 });

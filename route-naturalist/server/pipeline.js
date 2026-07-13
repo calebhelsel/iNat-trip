@@ -140,6 +140,10 @@ async function scanPolyline({ polyline, waypoints = [], username, directionsMs =
   const ttlMs = opts.cacheTtlMs;
   const filterStrategy = opts.filterStrategy || 'server';
   const maxRequests = opts.maxRequests || DEFAULT_MAX_REQUESTS;
+  // Wall-clock ceiling: stop querying new circles once exceeded and return partial
+  // results, so a huge/dense route can't run until a proxy or the browser cuts the
+  // connection (which yields an empty body -> a confusing client-side error).
+  const timeBudgetMs = opts.timeBudgetMs || 0;
 
   const t0 = Date.now();
   resetMetrics();
@@ -181,11 +185,14 @@ async function scanPolyline({ polyline, waypoints = [], username, directionsMs =
   // failing outright and won't keep hammering iNat past its limits.
   let aborted = false;
   let abortReason = null;
+  let timedOut = false;
+  const deadlineAt = timeBudgetMs ? t0 + timeBudgetMs : Infinity;
 
   async function worker() {
     while (true) {
       if (aborted) return;
-      if (requestsSpent >= maxRequests) return; // budget exhausted
+      if (Date.now() >= deadlineAt) { timedOut = true; return; } // time budget hit
+      if (requestsSpent >= maxRequests) return; // request budget exhausted
       const i = nextIdx++;
       if (i >= centers.length) return;
       const c = centers[i];
@@ -212,8 +219,8 @@ async function scanPolyline({ polyline, waypoints = [], username, directionsMs =
   await Promise.all(
     Array.from({ length: Math.min(concurrency, centers.length) }, () => worker())
   );
-  const budgetHit = !aborted && requestsSpent >= maxRequests && circlesQueried < centers.length;
-  const truncated = aborted || circlesQueried < centers.length;
+  const budgetHit = !aborted && !timedOut && requestsSpent >= maxRequests && circlesQueried < centers.length;
+  const truncated = aborted || timedOut || circlesQueried < centers.length;
   const tCircles = Date.now();
 
   // Normalize + keep only observations truly inside the 1-mile buffer.
@@ -251,6 +258,7 @@ async function scanPolyline({ polyline, waypoints = [], username, directionsMs =
     partial: aborted,
     partialReason: abortReason,
     budgetHit,
+    timedOut,
     cached: false,
     meta: {
       filterStrategy,
