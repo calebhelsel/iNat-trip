@@ -114,6 +114,32 @@ async function userExists(username) {
   }
 }
 
+// Reduce a raw iNaturalist observation to only the fields the app uses. Raw
+// records are large (full taxon ancestry, identifications, project links, faves,
+// etc.); holding thousands of them OOMs a small instance. Trimming on arrival —
+// before anything accumulates — cuts per-observation memory ~20-50x. The output
+// keeps the same field names normalizeObservation() reads, so nothing downstream
+// changes.
+function trimObservation(o) {
+  const t = o.taxon || {};
+  const photo = o.photos && o.photos[0];
+  return {
+    id: o.id,
+    location: o.location,
+    observed_on: o.observed_on,
+    time_observed_at: o.time_observed_at,
+    quality_grade: o.quality_grade,
+    taxon: {
+      id: t.id,
+      name: t.name,
+      preferred_common_name: t.preferred_common_name,
+      iconic_taxon_name: t.iconic_taxon_name,
+      observations_count: t.observations_count,
+    },
+    photos: photo && photo.url ? [{ url: photo.url }] : [],
+  };
+}
+
 // Fetch every species-level observation within a circle (lat, lng, radius km).
 // Uses id-cursor pagination (id_above) rather than page offsets so it stays
 // correct past iNat's 10k page-offset limit. `radiusKm` may exceed the buffer.
@@ -167,10 +193,12 @@ async function fetchObservationsInCircle(lat, lng, radiusKm, opts = {}) {
       break;
     }
     requests += 1;
-    const batch = data.results || [];
-    results.push(...batch);
-    if (batch.length < PER_PAGE) break;
-    idAbove = batch[batch.length - 1].id;
+    const raw = data.results || [];
+    // Trim each page immediately so the full raw records become garbage right away
+    // and never accumulate across pages/circles.
+    for (const o of raw) results.push(trimObservation(o));
+    if (raw.length < PER_PAGE) break;
+    idAbove = raw[raw.length - 1].id;
   }
   return { results, requests, error };
 }
@@ -211,4 +239,6 @@ module.exports = {
   getMetrics,
   resetMetrics,
   MAX_PAGES_PER_CIRCLE,
+  // Exported for unit tests.
+  trimObservation,
 };

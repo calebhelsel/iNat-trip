@@ -53,6 +53,14 @@ same route. It is the default (`filterStrategy: 'server'`).
 - **Public records only** (`geoprivacy=open&taxon_geoprivacy=open`) — obscured/
   private coordinates are excluded (they're randomized ~0.2°, so mapping them is
   misleading); as a side effect it trims a few percent of the pull.
+- **Trim observations on arrival** — raw iNat records are large (full taxon
+  ancestry, identifications, project links, …) but the app uses ~10 fields. Each
+  page is reduced to those fields the moment it's fetched, so nothing bloated
+  accumulates. This is what keeps a big scan inside a 512 MB instance; without it a
+  cross-state route OOMs ("JavaScript heap out of memory" → a 502).
+- **Memory + time budgets** (`MAX_OBSERVATIONS_PER_SCAN`, `SCAN_TIME_BUDGET_SEC`)
+  cap how much a single scan can hold and how long it can run, returning partial
+  results rather than crashing or outrunning the proxy.
 - **Per-circle page cap** (50) — one dense circle can't run away.
 - **Username validation** — unknown users fail immediately with a clear message.
 - **Instrumentation** — every scan returns `meta` with request counts, per-phase
