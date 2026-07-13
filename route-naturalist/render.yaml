@@ -26,6 +26,12 @@ services:
         value: "4"
       - key: MAX_REQUESTS_PER_SCAN
         value: "400"
+      # Keep scans bounded so the 512MB free instance doesn't OOM (502) or outrun
+      # the proxy timeout on a huge route.
+      - key: MAX_OBSERVATIONS_PER_SCAN
+        value: "25000"
+      - key: SCAN_TIME_BUDGET_SEC
+        value: "30"
       - key: CACHE_TTL_MINUTES
         value: "180"
       # per-IP scan limit on the public endpoint

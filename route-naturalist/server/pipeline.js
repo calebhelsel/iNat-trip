@@ -15,6 +15,11 @@ const cache = require('./cache');
 // partial results instead of hanging for minutes or exhausting the daily quota.
 const DEFAULT_MAX_REQUESTS = 400;
 
+// Hard ceiling on observations held in memory per scan. A cross-state route can
+// otherwise accumulate enough raw JSON to OOM a small instance (e.g. Render's
+// 512 MB free tier -> a 502). Past this we stop pulling and return partial results.
+const DEFAULT_MAX_OBSERVATIONS = 25000;
+
 const VERTEBRATE_TAXA = new Set([
   'Aves',
   'Amphibia',
@@ -140,6 +145,7 @@ async function scanPolyline({ polyline, waypoints = [], username, directionsMs =
   const ttlMs = opts.cacheTtlMs;
   const filterStrategy = opts.filterStrategy || 'server';
   const maxRequests = opts.maxRequests || DEFAULT_MAX_REQUESTS;
+  const maxObservations = opts.maxObservations || DEFAULT_MAX_OBSERVATIONS;
   // Wall-clock ceiling: stop querying new circles once exceeded and return partial
   // results, so a huge/dense route can't run until a proxy or the browser cuts the
   // connection (which yields an empty body -> a confusing client-side error).
@@ -192,7 +198,8 @@ async function scanPolyline({ polyline, waypoints = [], username, directionsMs =
     while (true) {
       if (aborted) return;
       if (Date.now() >= deadlineAt) { timedOut = true; return; } // time budget hit
-      if (requestsSpent >= maxRequests) return; // request budget exhausted
+      // request or memory budget exhausted
+      if (requestsSpent >= maxRequests || rawById.size >= maxObservations) return;
       const i = nextIdx++;
       if (i >= centers.length) return;
       const c = centers[i];
@@ -219,7 +226,9 @@ async function scanPolyline({ polyline, waypoints = [], username, directionsMs =
   await Promise.all(
     Array.from({ length: Math.min(concurrency, centers.length) }, () => worker())
   );
-  const budgetHit = !aborted && !timedOut && requestsSpent >= maxRequests && circlesQueried < centers.length;
+  const budgetHit = !aborted && !timedOut &&
+    (requestsSpent >= maxRequests || rawById.size >= maxObservations) &&
+    circlesQueried < centers.length;
   const truncated = aborted || timedOut || circlesQueried < centers.length;
   const tCircles = Date.now();
 

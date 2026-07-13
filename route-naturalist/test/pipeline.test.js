@@ -172,6 +172,27 @@ test('a scan that exceeds the time budget returns partial results', async () => 
   assert.equal(res.speciesCount, 1, 'still surfaces what it gathered');
 });
 
+test('the memory cap stops the scan and returns partial results', async () => {
+  // The first circle already yields 3 (deduped) observations; a cap of 2 stops the
+  // scan before it queries the remaining circles.
+  const observations = [
+    makeObservation(1, ...ON_ROUTE, { name: 'A' }),
+    makeObservation(2, ...ON_ROUTE, { name: 'B' }),
+    makeObservation(3, ...ON_ROUTE, { name: 'C' }),
+  ];
+  const { fakeFetch } = makeInatFetch({ observations });
+  global.fetch = fakeFetch;
+
+  const res = await scanPolyline(
+    { polyline: ROUTE, username: 'tester' },
+    opts({ maxObservations: 2 }),
+  );
+
+  assert.equal(res.budgetHit, true, 'memory cap counts as a budget hit');
+  assert.equal(res.truncated, true);
+  assert.ok(res.meta.circlesQueried < res.circleCount);
+});
+
 test('a long route places many circles and completes', async () => {
   const longRoute = straightPolyline(42.0, -76.0, 160, 40); // ~160 km
   const observations = [makeObservation(1, ...ON_ROUTE, { name: 'Anywhere' })];

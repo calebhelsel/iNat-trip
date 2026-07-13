@@ -19,10 +19,12 @@ const QUERY_RADIUS_KM = Number(process.env.QUERY_RADIUS_KM) || 5;
 const CACHE_TTL_MS = (Number(process.env.CACHE_TTL_MINUTES) || 180) * 60 * 1000;
 const FILTER_STRATEGY = process.env.FILTER_STRATEGY || 'server';
 const MAX_REQUESTS_PER_SCAN = Number(process.env.MAX_REQUESTS_PER_SCAN) || 400;
+const MAX_OBSERVATIONS_PER_SCAN = Number(process.env.MAX_OBSERVATIONS_PER_SCAN) || 25000;
 const INAT_CONCURRENCY = Number(process.env.INAT_CONCURRENCY) || 4;
 // Wall-clock cap per scan (seconds). A long/dense route returns partial results
-// within this window instead of running until the connection is cut. 0 disables.
-const SCAN_TIME_BUDGET_SEC = Number(process.env.SCAN_TIME_BUDGET_SEC) || 60;
+// within this window instead of running until the connection is cut. Kept safely
+// under typical proxy timeouts. 0 disables.
+const SCAN_TIME_BUDGET_SEC = Number(process.env.SCAN_TIME_BUDGET_SEC) || 30;
 // Per-IP scan rate limit — protects the Google/iNat quotas on a public URL.
 const SCAN_RATE_MAX = Number(process.env.SCAN_RATE_MAX) || 20;
 const SCAN_RATE_WINDOW_MIN = Number(process.env.SCAN_RATE_WINDOW_MIN) || 10;
@@ -67,6 +69,7 @@ app.post('/api/scan', scanLimiter, async (req, res) => {
         cacheTtlMs: CACHE_TTL_MS,
         filterStrategy: FILTER_STRATEGY,
         maxRequests: MAX_REQUESTS_PER_SCAN,
+        maxObservations: MAX_OBSERVATIONS_PER_SCAN,
         concurrency: INAT_CONCURRENCY,
         timeBudgetMs: SCAN_TIME_BUDGET_SEC * 1000,
       }
